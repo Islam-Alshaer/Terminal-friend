@@ -1,0 +1,15 @@
+[project]
+name = "terminal-friend"
+version = "0.1.0"
+requires-python = ">=3.13"
+readme = "README.md"
+dependencies = [
+    "ipython>=9.13.0",
+    "langchain-openrouter>=0.2.1",
+    "langchain-tavily>=0.2.18",
+    "python-dotenv>=1.0.0",
+    "pytest>=8.0.0",
+]
+
+[project.scripts]
+terminal-ai = "terminal_ai.main:run"
