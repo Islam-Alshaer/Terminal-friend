@@ -12,6 +12,9 @@ from langgraph.prebuilt import ToolNode
 from os_detection import get_os_details
 import subprocess
 from langchain.tools import tool
+from rich.console import Console
+from rich.prompt import Prompt
+from rich.panel import Panel
 
 
 class AgentState(TypedDict):
@@ -19,6 +22,8 @@ class AgentState(TypedDict):
 
 
 load_dotenv()
+console = Console()
+
 model = ChatOpenRouter(
     model="poolside/laguna-xs.2:free",
     temperature=0
@@ -34,12 +39,12 @@ def execute_command(command: str) -> str:
     #we use something generic for all OSs
     if platform.startswith("win"):
         result = subprocess.run(command, shell=True, capture_output=True, text=True)
-        print(result.stdout + '\n' + result.stderr)
+        console.print(result.stdout + '\n' + result.stderr)
         return result.stdout + "\n" + result.stderr
     else:
         stream = os.popen(command)
         output = stream.read()
-        print(output)
+        console.print(output)
         return output
 
 
@@ -64,7 +69,7 @@ def agent(state: AgentState) -> AgentState:
         else:
             prompt = "What's the next step? (type 'e' to exit)\n"
 
-        user_input = input(prompt)
+        user_input = Prompt.ask(prompt)
         if user_input.lower() == "e":
             return {"messages": [HumanMessage(content="e")]}
 
@@ -77,13 +82,13 @@ def agent(state: AgentState) -> AgentState:
         )
 
         response = model.invoke([sys_message] + messages + [user_message])
-        print(response.content)
+        console.print(Panel(response.content, title="[bold blue]AI Response[/bold blue]", border_style="blue"))
         # Return both the user message and the AI response to the state
         return {"messages": [user_message, response]}
 
     # Print the AI's thoughts if there is text content
     if response.content:
-        print(f"\nAI: {response.content}\n")
+        console.print(Panel(f"\n{response.content}\n", title="[bold green]AI Analysis[/bold green]", border_style="green"))
 
     return {"messages": [response]}
 
@@ -100,18 +105,14 @@ def should_continue(state: AgentState) -> str:
     if isinstance(last_message, AIMessage) and last_message.tool_calls:
         # Permission logic for command execution
         if any(tc['name'] == "execute_command" for tc in last_message.tool_calls):
-            print(f"WARNING: AI wants to run: {last_message.tool_calls[0]['args'].get('command')}")
-            print("Do you give permission? (y/n): \n")
-            while True:
-                choice = input().lower()
-                if choice in ["y", "yes"]:
-                    return "tools"  # go to the tools to execute the command
-                elif choice in ["n", "no"]:
-                    print("command was not executed.\n")
-                    state["messages"].append(HumanMessage("Permission to execute the command was denied by the user."))
-                    return "agent"  # go back to the agent to ask
-                else:
-                    print("invalid input, please enter \"y\" or \"n\" or \"yes\" or \"no\"\n")
+            console.print(f"[bold red]WARNING:[/bold red] AI wants to run: {last_message.tool_calls[0]['args'].get('command')}")
+            choice = Prompt.ask("Do you give permission? (y/n)", choices=["y", "n", "yes", "no"])
+            if choice.lower() in ["y", "yes"]:
+                return "tools"  # go to the tools to execute the command
+            elif choice.lower() in ["n", "no"]:
+                console.print("[yellow]Command was not executed.[/yellow]")
+                state["messages"].append(HumanMessage("Permission to execute the command was denied by the user."))
+                return "agent"  # go back to the agent to ask
 
         return "tools"
 
@@ -127,38 +128,34 @@ def should_continue(state: AgentState) -> str:
 
 
 def welcome_user():
-    print("Hi there!"
-          "I am your Terminal friend!\n"
-          "I can help you execute commands and fix problems that might appear in the way.\n"
-          "I can read the output of commands I execute.\n"
-          "And I can even search the web for solutions.\n")
+    welcome_text = ("Hi there! I am your Terminal friend!\n"
+                    "I can help you execute commands and fix problems that might appear in the way.\n"
+                    "I can read the output of commands I execute.\n"
+                    "And I can even search the web for solutions.\n")
+    console.print(Panel(welcome_text, title="[bold magenta]Welcome to Terminal Friend![/bold magenta]", border_style="magenta"))
 
-    print("I work with open router for the AI model and Tavily search for searching.\n"
-          "For both, you can get an API key from official sites: \n"
-          "open router: https://openrouter.ai/\n"
-          "Tavily: https://www.tavily.com/\n"
-          "You can even get free models from open router, and free 1000 API credits/month from Tavily!")
+    info_text = ("I work with open router for the AI model and Tavily search for searching.\n"
+                 "For both, you can get an API key from official sites:\n"
+                 "- Open Router: https://openrouter.ai/\n"
+                 "- Tavily: https://www.tavily.com/\n"
+                 "You can even get free models from open router, and free 1000 API credits/month from Tavily!")
+    console.print(Panel(info_text, title="[bold cyan]API Information[/bold cyan]", border_style="cyan"))
 
-    choice = input("Do you want to add the API keys manually in the .env file, or enter it here and we "
-                   "add it automatically? (a: automatically /m: manually)")
+    choice = Prompt.ask("Do you want to add the API keys manually in the .env file, or enter it here and we add it automatically?", choices=["a", "m"], default="a")
 
     if choice == "a":
-        open_router_api = input("Please enter your open router API key: \n")
+        open_router_api = Prompt.ask("Please enter your Open Router API key")
         tavily_search_api = ''
-        while True:
-            choice = input("Do you want to use the search tool? (y/n): ").lower()
-            if choice in ["y", "yes"]:
-                tavily_search_api = input("Please enter your Tavily search API key: \n")
-                break
-            else:
-                print("Invalid input, please enter \"y\" or \"n\" or \"yes\" or \"no\"\n")
+        choice = Prompt.ask("Do you want to use the search tool?", choices=["y", "n", "yes", "no"])
+        if choice.lower() in ["y", "yes"]:
+            tavily_search_api = Prompt.ask("Please enter your Tavily search API key")
 
         with open('../.env', 'a') as f:
             f.write(f"OPENROUTER_API_KEY={open_router_api}\n")
             f.write(f"TAVILY_API_KEY={tavily_search_api}\n")
     elif choice == "m":
-        print("Great! please write your keys inside the .env file manually.\n")
-        any_key = input("Press enter when you are done!\n")
+        console.print("[green]Great! Please write your keys inside the .env file manually.[/green]")
+        Prompt.ask("Press enter when you are done")
 
 
 def is_first_time():
@@ -211,7 +208,7 @@ def run():
     try:
         app.invoke({"messages": []})
     except KeyboardInterrupt:
-        print("\nGoodbye!")
+        console.print("\n[bold red]Goodbye![/bold red]")
     except:
         log(traceback.format_exc())
 

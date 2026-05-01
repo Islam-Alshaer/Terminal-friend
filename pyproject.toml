@@ -9,6 +9,7 @@ dependencies = [
     "langchain-tavily>=0.2.18",
     "python-dotenv>=1.0.0",
     "pytest>=8.0.0",
+    "rich>=13.0.0",
 ]
 
 [project.scripts]
