@@ -8,7 +8,7 @@
 
 # Installation
 1. clone the repo
-2. execute command ```bash pip install .```
+2. execute command ```pip install .```
 
 # About the tools used
 - LLM is used from your API key for openrouter.ai
